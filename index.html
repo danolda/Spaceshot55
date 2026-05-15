@@ -1,20 +1,1019 @@
-<!DOCTYPE html>
-<html lang="tr">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Lisans Yönetimi - Giriş</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>VECTOR STRIKE</title>
+<link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><polygon points='32,6 58,58 32,46 6,58' fill='none' stroke='%2300ff66' stroke-width='4'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --green:#00ff66;
+    --green-dim:#0a3;
+    --green-deep:#021a08;
+    --amber:#ffbf00;
+    --red:#ff2233;
+    --cyan:#7afaff;
+    --bg:#000;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{
+    width:100%;height:100%;overflow:hidden;
+    background:var(--bg);color:var(--green);
+    font-family:'Share Tech Mono','VT323',ui-monospace,monospace;
+    cursor:crosshair;
+    -webkit-font-smoothing:antialiased;
+  }
+  body{user-select:none;-webkit-user-select:none}
+  canvas#game{display:block;position:fixed;inset:0;z-index:1}
+
+  /* CRT scanlines + glow overlay */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:5;pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px),
+      radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.7) 100%);
+    mix-blend-mode:multiply;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;z-index:6;pointer-events:none;
+    box-shadow:inset 0 0 220px rgba(0,255,102,.08), inset 0 0 60px rgba(0,255,102,.05);
+  }
+
+  /* HUD ─────────────────────────────────────────── */
+  #hud{
+    position:fixed;inset:0;z-index:10;pointer-events:none;
+    color:var(--green);text-shadow:0 0 4px var(--green-dim);
+    font-size:14px;letter-spacing:.08em;
+  }
+  .hud-corner{position:absolute;padding:18px 22px;line-height:1.3}
+  .tl{top:0;left:0}.tr{top:0;right:0;text-align:right}
+  .bl{bottom:0;left:0}.br{bottom:0;right:0;text-align:right}
+
+  .hud-line{display:flex;gap:10px;align-items:baseline}
+  .hud-key{opacity:.55;font-size:11px}
+  .hud-val{font-family:'VT323',monospace;font-size:22px;line-height:1;color:var(--green)}
+  .hud-val.amber{color:var(--amber);text-shadow:0 0 4px rgba(255,191,0,.5)}
+  .hud-val.red{color:var(--red);text-shadow:0 0 6px rgba(255,34,51,.6)}
+
+  /* Crosshair */
+  #reticle{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:120px;height:120px;pointer-events:none;
+  }
+  #reticle svg{width:100%;height:100%;display:block;overflow:visible}
+  #reticle .r-stroke{stroke:var(--green);stroke-width:1.2;fill:none;filter:drop-shadow(0 0 2px var(--green-dim))}
+  #reticle .r-dot{fill:var(--green)}
+
+  /* Health bar */
+  .bar{
+    position:relative;width:180px;height:8px;border:1px solid var(--green);
+    background:rgba(0,255,102,.05);overflow:hidden;
+  }
+  .bar > i{
+    display:block;height:100%;background:var(--green);
+    box-shadow:0 0 8px var(--green-dim);
+    transition:width .15s linear, background .2s linear;
+  }
+  .bar.low > i{background:var(--amber)}
+  .bar.crit > i{background:var(--red);animation:pulse .35s steps(2,end) infinite}
+  @keyframes pulse{0%{opacity:1}50%{opacity:.35}100%{opacity:1}}
+
+  /* Compass */
+  #compass{
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    width:280px;height:22px;border-top:1px solid rgba(0,255,102,.4);
+    border-bottom:1px solid rgba(0,255,102,.4);overflow:hidden;
+    font-family:'VT323',monospace;color:var(--green);
+  }
+  #compass-strip{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;white-space:nowrap}
+  #compass-strip span{display:inline-block;width:50px;text-align:center;font-size:14px;opacity:.7}
+  #compass-strip span.cardinal{opacity:1;color:var(--cyan)}
+  #compass::after{
+    content:"▼";position:absolute;left:50%;top:-3px;transform:translateX(-50%);
+    color:var(--amber);font-size:10px;text-shadow:0 0 4px rgba(255,191,0,.6);
+  }
+
+  /* Damage flash */
+  #damage-flash{
+    position:fixed;inset:0;z-index:8;pointer-events:none;
+    background:radial-gradient(ellipse at center,transparent 30%,rgba(255,34,51,.55) 100%);
+    opacity:0;transition:opacity .15s ease-out;
+  }
+  #damage-flash.hit{opacity:1;transition:none}
+
+  /* Title screen ───────────────────────────────── */
+  .overlay{
+    position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    background:
+      radial-gradient(ellipse at center,rgba(0,255,102,.06),transparent 60%),
+      linear-gradient(180deg,#000 0,#01140a 100%);
+    pointer-events:auto;text-align:center;padding:32px;
+  }
+  .overlay.hidden{display:none}
+
+  .ascii-frame{
+    color:var(--green-dim);font-size:10px;line-height:1;white-space:pre;
+    margin-bottom:14px;opacity:.7;
+  }
+
+  .title{
+    font-family:'VT323',monospace;
+    font-size:clamp(64px,12vw,160px);line-height:.85;letter-spacing:.04em;
+    color:var(--green);text-shadow:0 0 18px rgba(0,255,102,.55),0 0 2px var(--green);
+    margin:0;
+  }
+  .title .s2{display:block;color:var(--amber);text-shadow:0 0 14px rgba(255,191,0,.5)}
+
+  .subtitle{
+    margin-top:8px;font-size:13px;letter-spacing:.45em;opacity:.6;
+    text-transform:uppercase;
+  }
+
+  .terminal{
+    margin-top:34px;width:min(560px,92vw);
+    border:1px solid var(--green-dim);padding:18px 22px;
+    background:rgba(0,255,102,.03);font-size:13px;line-height:1.7;
+    text-align:left;
+  }
+  .terminal .prompt{color:var(--amber)}
+  .terminal .blink{animation:blink 1s steps(2,end) infinite}
+  @keyframes blink{0%{opacity:1}50%{opacity:0}}
+  .terminal kbd{
+    display:inline-block;min-width:22px;padding:1px 6px;margin:0 2px;
+    border:1px solid var(--green);background:rgba(0,255,102,.08);
+    font-family:inherit;font-size:12px;color:var(--green);
+  }
+
+  .start-btn{
+    margin-top:26px;font-family:'VT323',monospace;font-size:30px;
+    letter-spacing:.14em;color:#000;background:var(--green);
+    padding:10px 34px;border:none;cursor:pointer;
+    box-shadow:6px 6px 0 var(--green-deep), 0 0 24px rgba(0,255,102,.4);
+    transition:transform .08s ease, box-shadow .08s ease;
+    text-transform:uppercase;
+  }
+  .start-btn:hover{transform:translate(2px,2px);box-shadow:3px 3px 0 var(--green-deep), 0 0 28px rgba(0,255,102,.6)}
+  .start-btn:active{transform:translate(6px,6px);box-shadow:0 0 0 var(--green-deep), 0 0 32px rgba(0,255,102,.7)}
+
+  .credit{position:absolute;bottom:18px;font-size:11px;opacity:.4;letter-spacing:.3em}
+
+  /* Game-over panel */
+  #game-over .title .s1{color:var(--red);text-shadow:0 0 18px rgba(255,34,51,.6)}
+  .stats{
+    margin-top:18px;font-size:18px;letter-spacing:.12em;color:var(--green);
+    display:grid;grid-template-columns:auto auto;gap:6px 22px;
+  }
+  .stats .k{opacity:.55;text-align:right}
+  .stats .v{font-family:'VT323',monospace;font-size:26px;line-height:1;color:var(--amber)}
+
+  /* Mobile */
+  @media (max-width:640px){
+    .hud-corner{padding:12px 14px;font-size:12px}
+    .hud-val{font-size:18px}
+    .bar{width:130px}
+    #compass{width:200px}
+    .terminal{font-size:12px;padding:14px 16px}
+  }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>Lisans Portalı</h1>
-        <input type="email" id="email" placeholder="E-posta Adresiniz">
-        <input type="password" id="password" placeholder="Şifreniz">
-        <button id="btnLogin">Giriş Yap</button>
-        <p id="error-message" class="error"></p>
+
+<canvas id="game"></canvas>
+<div id="damage-flash"></div>
+
+<!-- HUD ──────────────────────────────────────────── -->
+<div id="hud">
+
+  <div id="reticle">
+    <svg viewBox="-60 -60 120 120">
+      <circle cx="0" cy="0" r="3" class="r-dot"/>
+      <path class="r-stroke" d="M -42 0 L -10 0 M 42 0 L 10 0 M 0 -42 L 0 -10 M 0 42 L 0 10"/>
+      <path class="r-stroke" d="M -52 -52 L -42 -52 L -42 -42 M 52 -52 L 42 -52 L 42 -42 M -52 52 L -42 52 L -42 42 M 52 52 L 42 52 L 42 42"/>
+    </svg>
+  </div>
+
+  <div id="compass"><div id="compass-strip"></div></div>
+
+  <div class="hud-corner tl">
+    <div class="hud-line"><span class="hud-key">CALLSIGN</span></div>
+    <div class="hud-val" style="font-size:18px">VECTOR-7</div>
+    <div style="height:10px"></div>
+    <div class="hud-line"><span class="hud-key">HULL</span></div>
+    <div class="bar" id="hull-bar"><i style="width:100%"></i></div>
+  </div>
+
+  <div class="hud-corner tr">
+    <div class="hud-line"><span class="hud-key">SCORE</span></div>
+    <div class="hud-val amber" id="score-val">0000</div>
+    <div style="height:10px"></div>
+    <div class="hud-line"><span class="hud-key">KILLS</span></div>
+    <div class="hud-val" id="kills-val">00</div>
+  </div>
+
+  <div class="hud-corner bl">
+    <div class="hud-line"><span class="hud-key">ALT</span> <span class="hud-val" id="alt-val">000</span><span style="font-size:10px;opacity:.5">m</span></div>
+    <div class="hud-line"><span class="hud-key">SPD</span> <span class="hud-val" id="spd-val">000</span><span style="font-size:10px;opacity:.5">u/s</span></div>
+    <div class="hud-line"><span class="hud-key">HDG</span> <span class="hud-val" id="hdg-val">000</span></div>
+  </div>
+
+  <div class="hud-corner br">
+    <div class="hud-line"><span class="hud-key">CONTACTS</span></div>
+    <div class="hud-val" id="contacts-val">0</div>
+    <div style="height:10px"></div>
+    <div class="hud-line"><span class="hud-key">WAVE</span></div>
+    <div class="hud-val amber" id="wave-val">01</div>
+  </div>
+
+</div>
+
+<!-- Title screen ────────────────────────────────── -->
+<div id="title-screen" class="overlay">
+  <div class="ascii-frame">
+   ╔═══════════════════════════════════════════════╗
+   ║      LOW-ORBIT INTERDICTION COMMAND           ║
+   ╚═══════════════════════════════════════════════╝
+  </div>
+  <h1 class="title">VECTOR<span class="s2">STRIKE</span></h1>
+  <div class="subtitle">phosphor combat sim &middot; mk.iv</div>
+
+  <div class="terminal">
+    <div><span class="prompt">&gt;</span> incoming hostiles detected in sector 7G</div>
+    <div><span class="prompt">&gt;</span> mission: hold the ridge. eliminate all contacts.</div>
+    <div style="margin-top:10px">
+      <span class="prompt">controls //</span><br>
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> &mdash; pitch / roll &nbsp;&middot;&nbsp;
+      <kbd>MOUSE</kbd> aim &nbsp;&middot;&nbsp;
+      <kbd>LMB</kbd>/<kbd>SPACE</kbd> fire &nbsp;&middot;&nbsp;
+      <kbd>SHIFT</kbd> boost
     </div>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-    <script type="module" src="app.js"></script>
+    <div style="margin-top:8px"><span class="prompt">&gt;</span> awaiting pilot input<span class="blink">_</span></div>
+  </div>
+
+  <button class="start-btn" id="start-btn">▶ engage</button>
+  <div class="credit">made for github pages &middot; no build required</div>
+</div>
+
+<!-- Game over ─────────────────────────────────────── -->
+<div id="game-over" class="overlay hidden">
+  <h1 class="title"><span class="s1">SIGNAL</span><span class="s2">LOST</span></h1>
+  <div class="subtitle">pilot down // ridge breached</div>
+
+  <div class="stats">
+    <div class="k">FINAL SCORE</div><div class="v" id="go-score">0000</div>
+    <div class="k">KILLS</div>      <div class="v" id="go-kills">00</div>
+    <div class="k">WAVE REACHED</div><div class="v" id="go-wave">01</div>
+    <div class="k">TIME ON RIDGE</div><div class="v" id="go-time">00:00</div>
+  </div>
+
+  <button class="start-btn" id="restart-btn" style="margin-top:34px">▶ redeploy</button>
+</div>
+
+<!-- Three.js via importmap (works on GitHub Pages, no build step) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ── Setup ──────────────────────────────────────────────────────
+const canvas = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x000000, 60, 280);
+
+const camera = new THREE.PerspectiveCamera(74, window.innerWidth/window.innerHeight, 0.1, 800);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ── Procedural noise (seeded) ──────────────────────────────────
+function makeNoise(seed = 1337) {
+  // Simple but smooth value-noise (2D), deterministic via integer hash.
+  function hash(x, y) {
+    let n = (x * 374761393 + y * 668265263 + seed * 1442695040) | 0;
+    n = (n ^ (n >>> 13)) * 1274126177;
+    return (((n ^ (n >>> 16)) >>> 0) / 4294967295) * 2 - 1;
+  }
+  function smooth(t){ return t * t * (3 - 2 * t); }
+  function v(x, y){
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi,       yf = y - yi;
+    const a = hash(xi,     yi);
+    const b = hash(xi + 1, yi);
+    const c = hash(xi,     yi + 1);
+    const d = hash(xi + 1, yi + 1);
+    const u = smooth(xf), w = smooth(yf);
+    return (a*(1-u) + b*u) * (1-w) + (c*(1-u) + d*u) * w;
+  }
+  return function fbm(x, y){
+    // fractal brownian motion — layered noise for terrain
+    let amp = 1, freq = 1, sum = 0, norm = 0;
+    for (let i = 0; i < 5; i++){
+      sum += v(x*freq, y*freq) * amp;
+      norm += amp;
+      amp *= 0.5; freq *= 2;
+    }
+    return sum / norm;
+  };
+}
+const noise = makeNoise(20260515);
+
+const HEIGHT_SCALE = 22;
+function terrainHeight(wx, wz){
+  const h = noise(wx * 0.012, wz * 0.012) * HEIGHT_SCALE
+          + noise(wx * 0.05,  wz * 0.05)  * 4
+          - 6;
+  return h;
+}
+
+// ── Terrain (treadmill: mesh follows player, heights from world coords) ─
+const TERRAIN_SIZE = 360;
+const TERRAIN_SEG = 110;
+const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEG, TERRAIN_SEG);
+terrainGeo.rotateX(-Math.PI / 2);
+
+const terrainMat = new THREE.MeshBasicMaterial({
+  color: 0x00ff66, wireframe: true, transparent:true, opacity:0.9
+});
+const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+scene.add(terrain);
+
+// Hidden filled mesh underneath for solid ground feel (very dark green)
+const terrainFillGeo = terrainGeo.clone();
+const terrainFillMat = new THREE.MeshBasicMaterial({ color: 0x011408, side:THREE.DoubleSide });
+const terrainFill = new THREE.Mesh(terrainFillGeo, terrainFillMat);
+terrainFill.position.y = -0.05;
+scene.add(terrainFill);
+
+function updateTerrain(px, pz){
+  // Snap to grid cell so it doesn't shimmer
+  const step = TERRAIN_SIZE / TERRAIN_SEG;
+  const cx = Math.round(px / step) * step;
+  const cz = Math.round(pz / step) * step;
+  terrain.position.set(cx, 0, cz);
+  terrainFill.position.set(cx, -0.05, cz);
+
+  const pos = terrainGeo.attributes.position;
+  const fpos = terrainFillGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++){
+    const lx = pos.getX(i);
+    const lz = pos.getZ(i);
+    const h = terrainHeight(lx + cx, lz + cz);
+    pos.setY(i, h);
+    fpos.setY(i, h);
+  }
+  pos.needsUpdate = true;
+  fpos.needsUpdate = true;
+}
+
+// ── Horizon ridge silhouette (distant fake mountains) ──────────
+{
+  const ringGeo = new THREE.CylinderGeometry(360, 360, 40, 64, 1, true);
+  // crumple the rim for a jagged silhouette
+  const pos = ringGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++){
+    if (pos.getY(i) > 0){
+      const ang = Math.atan2(pos.getZ(i), pos.getX(i));
+      const bump = (noise(Math.cos(ang)*3, Math.sin(ang)*3) + 1) * 10
+                 + (noise(Math.cos(ang)*9, Math.sin(ang)*9) + 1) * 4;
+      pos.setY(i, bump);
+    }
+  }
+  pos.needsUpdate = true;
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x003318, side: THREE.BackSide, transparent:true, opacity:0.65
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.position.y = -8;
+  scene.add(ring);
+
+  // wireframe outline on top
+  const ringWire = new THREE.Mesh(ringGeo.clone(),
+    new THREE.MeshBasicMaterial({ color:0x00ff66, wireframe:true, transparent:true, opacity:0.18, side:THREE.BackSide })
+  );
+  ringWire.position.y = -8;
+  scene.add(ringWire);
+}
+
+// ── Player ship (wireframe craft) ─────────────────────────────
+function makeShip(){
+  const g = new THREE.Group();
+
+  // Body — flattened diamond
+  const bodyGeo = new THREE.ConeGeometry(0.55, 1.8, 4);
+  bodyGeo.rotateX(Math.PI/2);
+  bodyGeo.scale(1, 0.45, 1);
+  const wire = new THREE.MeshBasicMaterial({ color:0x00ff66, wireframe:true });
+  const body = new THREE.Mesh(bodyGeo, wire);
+  g.add(body);
+
+  // Wings
+  const wingGeo = new THREE.BufferGeometry();
+  const w = 1.6, l = 0.2, d = 0.6;
+  const verts = new Float32Array([
+    -w,0,d,  -0.35,0,-l, -0.35,0,d,
+    -w,0,d,  -0.35,0,d,  -0.35,0,-l,
+     w,0,d,   0.35,0,-l,  0.35,0,d,
+     w,0,d,   0.35,0,d,   0.35,0,-l,
+  ]);
+  wingGeo.setAttribute('position', new THREE.BufferAttribute(verts,3));
+  const wingsMesh = new THREE.Mesh(wingGeo, wire);
+  // Outline of wings
+  const wingsEdges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(wingGeo, 1),
+    new THREE.LineBasicMaterial({ color:0x00ff66 })
+  );
+  g.add(wingsMesh, wingsEdges);
+
+  // Engine glow (sprite-like)
+  const glowMat = new THREE.MeshBasicMaterial({ color:0xffbf00, transparent:true, opacity:0.85 });
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), glowMat);
+  glow.position.set(0, 0, 0.95);
+  g.add(glow);
+
+  g.userData.glow = glow;
+  return g;
+}
+const ship = makeShip();
+scene.add(ship);
+
+// ── Lasers ─────────────────────────────────────────────────────
+const lasers = [];
+const laserGeo = new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6);
+laserGeo.rotateX(Math.PI/2);
+const laserMat = new THREE.MeshBasicMaterial({ color:0xbfffd1 });
+const enemyLaserMat = new THREE.MeshBasicMaterial({ color:0xff5566 });
+
+function spawnLaser(fromObj, dir, speed = 180, source='player', dmg=1){
+  const m = new THREE.Mesh(laserGeo, source==='player'?laserMat:enemyLaserMat);
+  m.position.copy(fromObj.position);
+  m.quaternion.copy(fromObj.quaternion);
+  // Push slightly forward so it doesn't appear at our nose
+  const fwd = dir.clone().normalize();
+  m.position.addScaledVector(fwd, 1.4);
+  scene.add(m);
+  lasers.push({ mesh:m, vel: fwd.multiplyScalar(speed), life: 1.6, source, dmg });
+}
+
+// ── Enemies ────────────────────────────────────────────────────
+const enemies = [];
+function makeEnemy(){
+  const g = new THREE.Group();
+  const geo = new THREE.OctahedronGeometry(1.1, 0);
+  const wire = new THREE.MeshBasicMaterial({ color:0xff2233, wireframe:true });
+  g.add(new THREE.Mesh(geo, wire));
+  // inner core
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 6),
+    new THREE.MeshBasicMaterial({ color:0xff8090 })));
+  // ring
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.5, 0.04, 4, 24),
+    new THREE.MeshBasicMaterial({ color:0xff2233, transparent:true, opacity:0.55 })
+  );
+  ring.rotation.x = Math.PI/2;
+  g.add(ring);
+  g.userData.ring = ring;
+  g.userData.hp = 2;
+  g.userData.fireCooldown = 1.5 + Math.random()*1.5;
+  return g;
+}
+
+function spawnEnemy(){
+  const e = makeEnemy();
+  // place around player, somewhere ahead
+  const ang = (Math.random() - 0.5) * Math.PI * 1.2; // mostly in front
+  const dist = 90 + Math.random() * 60;
+  const baseDir = new THREE.Vector3();
+  ship.getWorldDirection(baseDir);
+  // rotate baseDir around Y by ang
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  const dx = baseDir.x * ca - baseDir.z * sa;
+  const dz = baseDir.x * sa + baseDir.z * ca;
+  e.position.set(
+    ship.position.x + dx * dist,
+    ship.position.y + 6 + Math.random()*14,
+    ship.position.z + dz * dist
+  );
+  scene.add(e);
+  enemies.push(e);
+}
+
+// ── Particles (explosions) ─────────────────────────────────────
+const particles = [];
+function explode(pos, color=0xffbf00, count=18, speed=22){
+  const geo = new THREE.BufferGeometry();
+  const verts = new Float32Array(count*3);
+  for (let i=0; i<count; i++){
+    verts[i*3]=pos.x; verts[i*3+1]=pos.y; verts[i*3+2]=pos.z;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(verts,3));
+  const mat = new THREE.PointsMaterial({ color, size:0.5, transparent:true, opacity:1 });
+  const pts = new THREE.Points(geo, mat);
+  scene.add(pts);
+  const vels = [];
+  for (let i=0; i<count; i++){
+    const v = new THREE.Vector3(
+      (Math.random()-0.5)*2,
+      (Math.random()-0.5)*2,
+      (Math.random()-0.5)*2
+    ).normalize().multiplyScalar(speed*(0.3+Math.random()*0.7));
+    vels.push(v);
+  }
+  particles.push({ pts, geo, mat, vels, life:0.9, max:0.9 });
+}
+
+// ── Audio (Web Audio synth, tiny + procedural) ─────────────────
+let audioCtx = null;
+function ensureAudio(){
+  if (audioCtx) { if (audioCtx.state === 'suspended') audioCtx.resume(); return audioCtx; }
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch(e){ audioCtx = null; }
+  return audioCtx;
+}
+function blip({ freq=440, dur=0.08, type='square', vol=0.06, sweep=0 }){
+  const a = ensureAudio(); if (!a) return;
+  const t = a.currentTime;
+  const o = a.createOscillator();
+  const g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (sweep) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq+sweep), t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(a.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function noiseBurst({ dur=0.25, vol=0.12 }){
+  const a = ensureAudio(); if (!a) return;
+  const buf = a.createBuffer(1, a.sampleRate*dur, a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * (1 - i/d.length);
+  const src = a.createBufferSource(); src.buffer = buf;
+  const g = a.createGain(); g.gain.value = vol;
+  const f = a.createBiquadFilter(); f.type='lowpass'; f.frequency.value=900;
+  src.connect(f).connect(g).connect(a.destination);
+  src.start();
+}
+
+// ── Input ──────────────────────────────────────────────────────
+const input = {
+  keys:new Set(), mouseX:0, mouseY:0, mouseDown:false, locked:false
+};
+window.addEventListener('keydown', e => {
+  input.keys.add(e.code);
+  if (e.code === 'Space') e.preventDefault();
+});
+window.addEventListener('keyup',   e => input.keys.delete(e.code));
+window.addEventListener('mousemove', e => {
+  if (input.locked){
+    input.mouseX += e.movementX;
+    input.mouseY += e.movementY;
+  } else if (state && state.running) {
+    // Fallback: position-based aim from screen-centre offset
+    const cx = window.innerWidth/2, cy = window.innerHeight/2;
+    input.mouseX += (e.clientX - cx) * 0.04;
+    input.mouseY += (e.clientY - cy) * 0.04;
+  }
+});
+canvas.addEventListener('mousedown', e => { if (e.button === 0) input.mouseDown = true; });
+window.addEventListener('mouseup',   e => { if (e.button === 0) input.mouseDown = false; });
+window.addEventListener('blur', () => input.keys.clear());
+
+document.addEventListener('pointerlockchange', () => {
+  input.locked = (document.pointerLockElement === canvas);
+});
+
+// ── State ──────────────────────────────────────────────────────
+const state = {
+  running:false,
+  hp:100, maxHp:100,
+  score:0, kills:0, wave:1,
+  spawnTimer:0, waveTimer:0, waveTarget:4, waveSpawned:0,
+  fireCooldown:0, boost:1, boostEnergy:1,
+  startTime:0, elapsed:0,
+  velocity: new THREE.Vector3(),
+  yaw:0, pitch:0, roll:0,
+};
+
+function reset(){
+  state.running = true;
+  state.hp = state.maxHp;
+  state.score = 0; state.kills = 0; state.wave = 1;
+  state.spawnTimer = 1.5; state.waveTimer = 0; state.waveSpawned = 0;
+  state.waveTarget = 4;
+  state.fireCooldown = 0; state.boost = 1; state.boostEnergy = 1;
+  state.yaw = 0; state.pitch = 0; state.roll = 0;
+  state.startTime = performance.now()/1000;
+  state.elapsed = 0;
+
+  ship.position.set(0, 20, 0);
+  ship.rotation.set(0, 0, 0);
+  state.velocity.set(0, 0, -1);
+
+  // Clear enemies & lasers & particles
+  for (const e of enemies) scene.remove(e); enemies.length = 0;
+  for (const l of lasers)  scene.remove(l.mesh); lasers.length = 0;
+  for (const p of particles) scene.remove(p.pts); particles.length = 0;
+
+  updateTerrain(0, 0);
+}
+
+// ── HUD elements (cached) ──────────────────────────────────────
+const hud = {
+  hull: document.querySelector('#hull-bar'),
+  hullFill: document.querySelector('#hull-bar > i'),
+  score: document.getElementById('score-val'),
+  kills: document.getElementById('kills-val'),
+  alt: document.getElementById('alt-val'),
+  spd: document.getElementById('spd-val'),
+  hdg: document.getElementById('hdg-val'),
+  contacts: document.getElementById('contacts-val'),
+  wave: document.getElementById('wave-val'),
+  flash: document.getElementById('damage-flash'),
+  compassStrip: document.getElementById('compass-strip'),
+};
+
+// Build compass strip
+(function buildCompass(){
+  const labels = [];
+  for (let deg = 0; deg < 720; deg += 10){
+    const d = deg % 360;
+    let label = String(d).padStart(3,'0');
+    if (d === 0)   label = 'N';
+    if (d === 90)  label = 'E';
+    if (d === 180) label = 'S';
+    if (d === 270) label = 'W';
+    labels.push(
+      `<span class="${[0,90,180,270].includes(d) ? 'cardinal' : ''}">${label}</span>`
+    );
+  }
+  hud.compassStrip.innerHTML = labels.join('');
+})();
+
+function fmtNum(n, w=4){ return String(Math.max(0, Math.floor(n))).padStart(w,'0'); }
+function updateHUD(dt){
+  const hpPct = Math.max(0, state.hp / state.maxHp);
+  hud.hullFill.style.width = (hpPct*100).toFixed(1) + '%';
+  hud.hull.classList.toggle('low',  hpPct < 0.55 && hpPct >= 0.25);
+  hud.hull.classList.toggle('crit', hpPct < 0.25);
+
+  hud.score.textContent    = fmtNum(state.score, 4);
+  hud.kills.textContent    = fmtNum(state.kills, 2);
+  hud.contacts.textContent = fmtNum(enemies.length, 2);
+  hud.wave.textContent     = fmtNum(state.wave, 2);
+
+  hud.alt.textContent = fmtNum(Math.max(0, ship.position.y - terrainHeight(ship.position.x, ship.position.z)), 3);
+  hud.spd.textContent = fmtNum(state.velocity.length(), 3);
+
+  // Heading: derive yaw from ship forward
+  const fwd = new THREE.Vector3(); ship.getWorldDirection(fwd);
+  let hdg = Math.atan2(fwd.x, -fwd.z) * 180 / Math.PI;
+  if (hdg < 0) hdg += 360;
+  hud.hdg.textContent = fmtNum(hdg, 3);
+
+  // Compass strip: each span is 50px wide and represents 10°.
+  // We want the centre of the span for current heading to sit at 140px (container centre).
+  const px = (hdg / 10) * 50 + 25;
+  hud.compassStrip.style.transform = `translateX(${(140 - px)}px)`;
+}
+
+function damageFlash(){
+  hud.flash.classList.add('hit');
+  requestAnimationFrame(() => hud.flash.classList.remove('hit'));
+}
+
+// ── Game flow / waves ──────────────────────────────────────────
+function manageWaves(dt){
+  state.waveTimer += dt;
+  // If still spawning this wave
+  if (state.waveSpawned < state.waveTarget){
+    state.spawnTimer -= dt;
+    if (state.spawnTimer <= 0){
+      spawnEnemy();
+      state.waveSpawned++;
+      state.spawnTimer = 1.0 + Math.random()*0.7;
+    }
+  } else if (enemies.length === 0){
+    // wave clear → next wave after brief pause
+    if (state.waveTimer > 2.5){
+      state.wave++;
+      state.waveTarget = Math.min(20, 4 + state.wave*2);
+      state.waveSpawned = 0;
+      state.spawnTimer = 1.0;
+      state.waveTimer = 0;
+      // Heal a little between waves
+      state.hp = Math.min(state.maxHp, state.hp + 18);
+      blip({freq:660,dur:0.08,type:'triangle',vol:0.05});
+      blip({freq:880,dur:0.1, type:'triangle',vol:0.05});
+    }
+  }
+}
+
+// ── Update loop ────────────────────────────────────────────────
+const clock = new THREE.Clock();
+const tmpV = new THREE.Vector3();
+const tmpV2 = new THREE.Vector3();
+
+function tick(){
+  const dt = Math.min(0.05, clock.getDelta());
+
+  if (state.running){
+    state.elapsed = performance.now()/1000 - state.startTime;
+
+    // ─── Controls
+    // Mouse → pitch/yaw deltas; consume accumulators
+    const mouseSens = 0.0022;
+    state.yaw   -= input.mouseX * mouseSens;
+    state.pitch -= input.mouseY * mouseSens;
+    input.mouseX = 0; input.mouseY = 0;
+
+    // Keyboard
+    const k = input.keys;
+    const kbdSpeed = 1.6 * dt;
+    if (k.has('KeyA') || k.has('ArrowLeft'))  state.yaw   += kbdSpeed * 0.6;
+    if (k.has('KeyD') || k.has('ArrowRight')) state.yaw   -= kbdSpeed * 0.6;
+    if (k.has('KeyW') || k.has('ArrowUp'))    state.pitch += kbdSpeed * 0.7;
+    if (k.has('KeyS') || k.has('ArrowDown'))  state.pitch -= kbdSpeed * 0.7;
+
+    state.pitch = Math.max(-1.2, Math.min(1.2, state.pitch));
+
+    // Roll = banking from yaw input
+    const targetRoll = -((k.has('KeyA')||k.has('ArrowLeft'))?1:0) + ((k.has('KeyD')||k.has('ArrowRight'))?1:0);
+    state.roll += (targetRoll * 0.5 - state.roll) * Math.min(1, dt * 5);
+
+    // Apply rotation to ship
+    ship.rotation.set(0, 0, 0);
+    ship.rotateY(state.yaw);
+    ship.rotateX(state.pitch);
+    ship.rotateZ(state.roll);
+
+    // Boost
+    const boosting = k.has('ShiftLeft') || k.has('ShiftRight');
+    if (boosting && state.boostEnergy > 0.02){
+      state.boost += (1.9 - state.boost) * Math.min(1, dt*4);
+      state.boostEnergy = Math.max(0, state.boostEnergy - dt*0.45);
+    } else {
+      state.boost += (1.0 - state.boost) * Math.min(1, dt*3);
+      state.boostEnergy = Math.min(1, state.boostEnergy + dt*0.22);
+    }
+
+    // Forward motion
+    const baseSpd = 32;
+    const fwd = new THREE.Vector3();
+    ship.getWorldDirection(fwd);
+    state.velocity.copy(fwd).multiplyScalar(baseSpd * state.boost);
+    ship.position.addScaledVector(state.velocity, dt);
+
+    // Engine glow size with boost
+    ship.userData.glow.scale.setScalar(1 + (state.boost-1)*1.4);
+    ship.userData.glow.material.opacity = 0.6 + (state.boost-1)*0.35;
+
+    // Terrain follow + collision
+    updateTerrain(ship.position.x, ship.position.z);
+    const groundH = terrainHeight(ship.position.x, ship.position.z);
+    const minAlt = groundH + 2.0;
+    if (ship.position.y < minAlt){
+      // ground graze
+      ship.position.y = minAlt;
+      state.hp -= 35 * dt;
+      damageFlash();
+      noiseBurst({dur:0.05, vol:0.06});
+      state.pitch = Math.max(state.pitch, 0.3);
+    }
+    if (ship.position.y > 90) ship.position.y = 90;
+
+    // Fire
+    state.fireCooldown -= dt;
+    if ((input.mouseDown || k.has('Space')) && state.fireCooldown <= 0){
+      const dir = new THREE.Vector3(); ship.getWorldDirection(dir);
+      // alternate wings — small offset
+      const t = performance.now()*0.001;
+      const off = new THREE.Vector3((Math.sin(t*40) > 0 ? 0.7 : -0.7), -0.1, 0)
+        .applyQuaternion(ship.quaternion);
+      const fakeOrigin = new THREE.Object3D();
+      fakeOrigin.position.copy(ship.position).add(off);
+      fakeOrigin.quaternion.copy(ship.quaternion);
+      spawnLaser(fakeOrigin, dir, 200, 'player', 1);
+      state.fireCooldown = 0.11;
+      blip({freq:1200, dur:0.06, type:'square', vol:0.05, sweep:-500});
+    }
+
+    // ─── Enemies update
+    for (let i = enemies.length - 1; i >= 0; i--){
+      const e = enemies[i];
+      // simple steering toward player, with some drift
+      const toP = tmpV.copy(ship.position).sub(e.position);
+      const dist = toP.length();
+      toP.normalize();
+      // keep some distance — circle around if close
+      let desiredSpeed = 12;
+      if (dist < 30) {
+        // orbit-ish
+        const side = tmpV2.set(-toP.z, 0, toP.x);
+        toP.addScaledVector(side, 0.9).normalize();
+      } else if (dist > 220) {
+        // too far → despawn
+        scene.remove(e);
+        enemies.splice(i,1);
+        continue;
+      }
+      e.position.addScaledVector(toP, desiredSpeed * dt);
+      // face player
+      e.lookAt(ship.position);
+      e.userData.ring.rotation.z += dt * 2;
+
+      // fire at player occasionally
+      e.userData.fireCooldown -= dt;
+      if (e.userData.fireCooldown <= 0 && dist < 130){
+        e.userData.fireCooldown = 1.7 + Math.random()*1.6;
+        const dirE = new THREE.Vector3().subVectors(ship.position, e.position).normalize();
+        const orient = new THREE.Object3D();
+        orient.position.copy(e.position);
+        orient.lookAt(ship.position);
+        spawnLaser(orient, dirE, 90, 'enemy', 6);
+        blip({freq:240, dur:0.12, type:'sawtooth', vol:0.04, sweep:-60});
+      }
+
+      // collision with player ship
+      if (dist < 2.2){
+        state.hp -= 22;
+        damageFlash();
+        explode(e.position, 0xff5566, 22, 18);
+        explode(ship.position, 0xffbf00, 10, 10);
+        scene.remove(e);
+        enemies.splice(i,1);
+        noiseBurst({dur:0.3, vol:0.18});
+      }
+    }
+
+    // ─── Lasers update
+    for (let i = lasers.length - 1; i >= 0; i--){
+      const l = lasers[i];
+      l.mesh.position.addScaledVector(l.vel, dt);
+      l.life -= dt;
+      let killed = false;
+
+      if (l.source === 'player'){
+        // hit-test against enemies
+        for (let j = enemies.length - 1; j >= 0; j--){
+          const e = enemies[j];
+          if (l.mesh.position.distanceTo(e.position) < 1.6){
+            e.userData.hp -= l.dmg;
+            explode(l.mesh.position, 0xbfffd1, 6, 8);
+            killed = true;
+            if (e.userData.hp <= 0){
+              explode(e.position, 0xff2233, 22, 20);
+              explode(e.position, 0xffbf00, 10, 12);
+              scene.remove(e); enemies.splice(j,1);
+              state.kills++;
+              state.score += 100 + state.wave * 10;
+              noiseBurst({dur:0.18, vol:0.13});
+              blip({freq:140, dur:0.18, type:'square', vol:0.06, sweep:-80});
+            } else {
+              blip({freq:520, dur:0.04, type:'square', vol:0.03});
+            }
+            break;
+          }
+        }
+      } else {
+        // enemy laser — check vs player
+        if (l.mesh.position.distanceTo(ship.position) < 1.4){
+          state.hp -= l.dmg;
+          damageFlash();
+          killed = true;
+          blip({freq:200, dur:0.08, type:'square', vol:0.05, sweep:-120});
+        }
+      }
+
+      // hit ground?
+      if (!killed){
+        const gh = terrainHeight(l.mesh.position.x, l.mesh.position.z);
+        if (l.mesh.position.y < gh){
+          explode(l.mesh.position, l.source==='player' ? 0xbfffd1 : 0xff5566, 6, 6);
+          killed = true;
+        }
+      }
+
+      if (killed || l.life <= 0){
+        scene.remove(l.mesh);
+        lasers.splice(i,1);
+      }
+    }
+
+    // ─── Particles
+    for (let i = particles.length - 1; i >= 0; i--){
+      const p = particles[i];
+      p.life -= dt;
+      const pos = p.geo.attributes.position;
+      for (let j = 0; j < pos.count; j++){
+        pos.array[j*3]   += p.vels[j].x * dt;
+        pos.array[j*3+1] += p.vels[j].y * dt;
+        pos.array[j*3+2] += p.vels[j].z * dt;
+        p.vels[j].multiplyScalar(0.96);
+      }
+      pos.needsUpdate = true;
+      p.mat.opacity = Math.max(0, p.life / p.max);
+      if (p.life <= 0){
+        scene.remove(p.pts);
+        p.geo.dispose(); p.mat.dispose();
+        particles.splice(i,1);
+      }
+    }
+
+    // ─── Camera follow (third-person)
+    const camOffset = new THREE.Vector3(0, 1.4, 5.2).applyQuaternion(ship.quaternion);
+    const camTarget = ship.position.clone().add(camOffset);
+    camera.position.lerp(camTarget, Math.min(1, dt * 8));
+    const lookAhead = new THREE.Vector3();
+    ship.getWorldDirection(lookAhead);
+    camera.lookAt(ship.position.clone().add(lookAhead.multiplyScalar(8)));
+    camera.up.set(0,1,0).applyQuaternion(ship.quaternion);
+
+    // ─── Game over?
+    if (state.hp <= 0){
+      state.hp = 0;
+      state.running = false;
+      explode(ship.position, 0xffbf00, 36, 26);
+      explode(ship.position, 0xff2233, 20, 22);
+      noiseBurst({dur:0.6, vol:0.22});
+      setTimeout(showGameOver, 600);
+    }
+
+    manageWaves(dt);
+    updateHUD(dt);
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+// ── Title / game-over UI ───────────────────────────────────────
+const titleEl = document.getElementById('title-screen');
+const overEl  = document.getElementById('game-over');
+const startBtn = document.getElementById('start-btn');
+const restartBtn = document.getElementById('restart-btn');
+
+function startGame(){
+  titleEl.classList.add('hidden');
+  overEl.classList.add('hidden');
+  reset();
+  canvas.requestPointerLock?.();
+  ensureAudio();
+}
+function showGameOver(){
+  document.getElementById('go-score').textContent = fmtNum(state.score,4);
+  document.getElementById('go-kills').textContent = fmtNum(state.kills,2);
+  document.getElementById('go-wave').textContent  = fmtNum(state.wave,2);
+  const m = Math.floor(state.elapsed/60), s = Math.floor(state.elapsed%60);
+  document.getElementById('go-time').textContent =
+    String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  overEl.classList.remove('hidden');
+  document.exitPointerLock?.();
+}
+startBtn.addEventListener('click', startGame);
+restartBtn.addEventListener('click', startGame);
+window.addEventListener('keydown', e => {
+  if (e.code === 'Enter'){
+    if (!titleEl.classList.contains('hidden')) { startGame(); }
+    else if (!overEl.classList.contains('hidden')) { startGame(); }
+  }
+});
+
+// Demo scene — show terrain even on title screen so it feels alive
+ship.position.set(0, 20, 0);
+updateTerrain(0,0);
+camera.position.set(0, 24, 12);
+camera.lookAt(0, 18, -10);
+
+// Slow background drift while on title (no game state)
+let bgT = 0;
+const bgDrift = () => {
+  if (!state.running){
+    bgT += 0.005;
+    updateTerrain(Math.sin(bgT*0.6)*30, bgT*40);
+  }
+};
+setInterval(bgDrift, 60);
+
+requestAnimationFrame(tick);
+</script>
+
 </body>
 </html>
