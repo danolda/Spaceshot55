@@ -1154,9 +1154,22 @@ function tick(){
     beacons.position.set(ship.position.x, 0, ship.position.z);
     horizonGroup.position.set(ship.position.x, 0, ship.position.z);
 
-    // ─── Camera follow (third-person) with subtle shake on damage
-    const camOffset = new THREE.Vector3(0, 1.5, 5.6).applyQuaternion(ship.quaternion);
-    const camTarget = ship.position.clone().add(camOffset);
+    // ─── Camera follow (stable horizontal chase, doesn't tilt with ship pitch/roll)
+    // Why: pitching the camera with the ship inverts the player's spatial sense.
+    // The horizon must stay roughly level so "mouse up" looks like "plane goes up".
+    const fwdH = new THREE.Vector3();
+    ship.getWorldDirection(fwdH);
+    fwdH.y = 0;
+    const fwdHLen = fwdH.length();
+    if (fwdHLen > 0.001) fwdH.divideScalar(fwdHLen);
+    else fwdH.set(0, 0, -1);
+
+    const camTarget = new THREE.Vector3(
+      ship.position.x - fwdH.x * 5.6,
+      ship.position.y + 1.8,
+      ship.position.z - fwdH.z * 5.6
+    );
+
     // small shake based on shake budget (decays each frame)
     state.shake = Math.max(0, (state.shake || 0) - dt * 4);
     if (state.shake > 0){
@@ -1164,10 +1177,21 @@ function tick(){
       camTarget.y += (Math.random()-0.5) * state.shake;
     }
     camera.position.lerp(camTarget, Math.min(1, dt * 8));
-    const lookAhead = new THREE.Vector3();
-    ship.getWorldDirection(lookAhead);
-    camera.lookAt(ship.position.clone().add(lookAhead.multiplyScalar(8)));
-    camera.up.set(0,1,0).applyQuaternion(ship.quaternion);
+
+    // Keep camera above terrain just in case (don't clip a mountain behind us)
+    const camGroundH = terrainHeight(camera.position.x, camera.position.z);
+    if (camera.position.y < camGroundH + 1.0){
+      camera.position.y = camGroundH + 1.0;
+    }
+
+    // Look slightly ahead in the horizontal plane — view stays level
+    const lookTarget = new THREE.Vector3(
+      ship.position.x + fwdH.x * 6,
+      ship.position.y,
+      ship.position.z + fwdH.z * 6
+    );
+    camera.lookAt(lookTarget);
+    camera.up.set(0, 1, 0);  // world up — no roll/pitch in the camera
 
     // FOV zoom with boost (speed-warp feel)
     const targetFov = 74 + (state.boost - 1) * 7;
